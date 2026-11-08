@@ -86,8 +86,13 @@ export async function waitForDetection(
 // ---- 위험도 진단 ----
 export type RiskLevel = 'HIGH' | 'MEDIUM' | 'LOW';
 
+export type AssessmentFailureReason = 'NO_FACE_DETECTED' | 'AI_SERVER_ERROR' | 'TIMEOUT';
+
 export interface RiskAssessment {
   assessmentId: number;
+  // 접수 후 조회 방식(서버 #60)이 배포되면 채워진다. 이전 서버는 status 없이 완성된 결과를 바로 준다.
+  status?: 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  failureReason?: AssessmentFailureReason | null;
   overallRiskLevel: RiskLevel;
   overallScore: number;
   factors: { type: string; label: string; score: number; description: string }[];
@@ -99,6 +104,26 @@ export function createRiskAssessment(discordUserId: string, file: Blob, filename
   const form = new FormData();
   form.append('image', file, filename);
   return request(discordUserId, '/api/v1/risk-assessments', { method: 'POST', body: form });
+}
+
+export function getRiskAssessment(discordUserId: string, assessmentId: number): Promise<RiskAssessment> {
+  return request(discordUserId, `/api/v1/risk-assessments/${assessmentId}`);
+}
+
+/** 비동기 서버면 완료될 때까지 폴링하고, 동기 서버면 받은 결과를 그대로 돌려준다. */
+export async function waitForRiskAssessment(
+  discordUserId: string,
+  first: RiskAssessment,
+  { intervalMs = 2000, timeoutMs = 90_000 } = {},
+): Promise<RiskAssessment> {
+  let current = first;
+  const deadline = Date.now() + timeoutMs;
+  while (current.status === 'PROCESSING') {
+    if (Date.now() >= deadline) throw new SignalApiError(408, '진단이 오래 걸리고 있어요. 잠시 후 다시 시도해 주세요.');
+    await new Promise((r) => setTimeout(r, intervalMs));
+    current = await getRiskAssessment(discordUserId, first.assessmentId);
+  }
+  return current;
 }
 
 // ---- 기관 ----

@@ -1,6 +1,13 @@
 import { ChatInputCommandInteraction, EmbedBuilder, SlashCommandBuilder } from 'discord.js';
 import { downloadImage, validateImage } from '../attachment';
-import { RiskAssessment, RiskLevel, SignalApiError, createRiskAssessment } from '../signal-api';
+import {
+  AssessmentFailureReason,
+  RiskAssessment,
+  RiskLevel,
+  SignalApiError,
+  createRiskAssessment,
+  waitForRiskAssessment,
+} from '../signal-api';
 
 export const data = new SlashCommandBuilder()
   .setName('위험도')
@@ -11,6 +18,12 @@ const LEVEL: Record<RiskLevel, { label: string; color: number }> = {
   LOW: { label: '낮음 🟢', color: 0x2ecc71 },
   MEDIUM: { label: '보통 🟡', color: 0xf1c40f },
   HIGH: { label: '높음 🔴', color: 0xe74c3c },
+};
+
+const FAILURE_TEXT: Record<AssessmentFailureReason, string> = {
+  NO_FACE_DETECTED: '사진에서 얼굴을 찾지 못했어요. 얼굴이 잘 보이는 사진으로 다시 시도해 주세요.',
+  AI_SERVER_ERROR: '진단 서버에 문제가 생겼어요. 잠시 후 다시 시도해 주세요.',
+  TIMEOUT: '진단 시간이 초과됐어요. 잠시 후 다시 시도해 주세요.',
 };
 
 function bar(score: number): string {
@@ -50,7 +63,17 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   await interaction.deferReply({ ephemeral: true });
   try {
     const blob = await downloadImage(attachment);
-    const result = await createRiskAssessment(interaction.user.id, blob, attachment.name);
+    const userId = interaction.user.id;
+    const accepted = await createRiskAssessment(userId, blob, attachment.name);
+    if (accepted.status === 'PROCESSING') await interaction.editReply('진단 중이에요… 잠시만 기다려 주세요 ⏳');
+
+    const result = await waitForRiskAssessment(userId, accepted);
+    if (result.status === 'FAILED') {
+      await interaction.editReply(
+        (result.failureReason && FAILURE_TEXT[result.failureReason]) ?? '진단에 실패했어요. 다시 시도해 주세요.',
+      );
+      return;
+    }
     await interaction.editReply({ embeds: [buildEmbed(result, attachment.url)] });
   } catch (err) {
     console.error('[/위험도]', err);
