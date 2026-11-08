@@ -1,7 +1,7 @@
 import { Attachment, ChatInputCommandInteraction } from 'discord.js';
 
 const MAX_BYTES = 10 * 1024 * 1024; // 서버의 이미지 전용 한도
-const ALLOWED = ['image/jpeg', 'image/png', 'image/webp'];
+const ALLOWED = ['image/jpeg', 'image/png'] // 서버가 받는 이미지 형식;
 
 /** 이미지 첨부를 검증하고 내려받는다. 문제가 있으면 사용자에게 답하고 null을 돌려준다. */
 export async function validateImage(
@@ -9,7 +9,7 @@ export async function validateImage(
   attachment: Attachment,
 ): Promise<boolean> {
   if (!attachment.contentType || !ALLOWED.includes(attachment.contentType)) {
-    await interaction.reply({ content: 'JPG, PNG, WEBP 이미지만 분석할 수 있어요.', ephemeral: true });
+    await interaction.reply({ content: 'JPG, PNG 이미지만 분석할 수 있어요.', ephemeral: true });
     return false;
   }
   if (attachment.size > MAX_BYTES) {
