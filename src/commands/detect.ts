@@ -1,8 +1,12 @@
 import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   ChatInputCommandInteraction,
   EmbedBuilder,
   SlashCommandBuilder,
 } from 'discord.js';
+import { downloadImage, validateImage } from '../attachment';
 import {
   Detection,
   FailureReason,
@@ -11,8 +15,8 @@ import {
   waitForDetection,
 } from '../signal-api';
 
-const MAX_BYTES = 10 * 1024 * 1024; // 서버의 이미지 전용 한도
-const ALLOWED = ['image/jpeg', 'image/png', 'image/webp'];
+/** 결과가 의심 이상일 때 붙이는 버튼. 클릭은 index.ts에서 처리한다. */
+export const AGENCY_BUTTON_ID = 'agency:DEEPFAKE_IMAGE';
 
 export const data = new SlashCommandBuilder()
   .setName('탐지')
@@ -67,22 +71,13 @@ function buildEmbed(d: Detection, imageUrl: string): EmbedBuilder {
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
   const attachment = interaction.options.getAttachment('이미지', true);
 
-  if (!attachment.contentType || !ALLOWED.includes(attachment.contentType)) {
-    await interaction.reply({ content: 'JPG, PNG, WEBP 이미지만 분석할 수 있어요.', ephemeral: true });
-    return;
-  }
-  if (attachment.size > MAX_BYTES) {
-    await interaction.reply({ content: '이미지는 10MB 이하여야 해요.', ephemeral: true });
-    return;
-  }
+  if (!(await validateImage(interaction, attachment))) return;
 
   // 피해 관련 사진일 수 있어 결과는 본인에게만 보인다.
   await interaction.deferReply({ ephemeral: true });
 
   try {
-    const imageRes = await fetch(attachment.url);
-    if (!imageRes.ok) throw new Error(`이미지 다운로드 실패 (${imageRes.status})`);
-    const blob = await imageRes.blob();
+    const blob = await downloadImage(attachment);
 
     const userId = interaction.user.id;
     const detectionId = await createDetection(userId, blob, attachment.name);
@@ -95,7 +90,15 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       );
       return;
     }
-    await interaction.editReply({ content: '', embeds: [buildEmbed(detection, attachment.url)] });
+    const suspicious = detection.band === 'HIGH' || detection.verdict === 'FAKE' || detection.verdict === 'SUSPICIOUS';
+    const components = suspicious
+      ? [
+          new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder().setCustomId(AGENCY_BUTTON_ID).setLabel('도움받을 곳 보기').setStyle(ButtonStyle.Danger),
+          ),
+        ]
+      : [];
+    await interaction.editReply({ content: '', embeds: [buildEmbed(detection, attachment.url)], components });
   } catch (err) {
     console.error('[/탐지]', err);
     const message =
