@@ -1,0 +1,22 @@
+{
+  "name": "signal-dicobot",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "deploy-commands": "ts-node src/deploy-commands.ts",
+    "test": "tsc --noEmit"
+  },
+  "dependencies": {
+    "discord.js": "^14.26.4",
+    "dotenv": "^17.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3"
+  }
+}
